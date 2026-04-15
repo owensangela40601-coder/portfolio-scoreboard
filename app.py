@@ -1,4 +1,5 @@
 from flask import Flask, request, render_template, redirect, url_for
+import requests
 import re
 import json
 import os
@@ -7,12 +8,15 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 
 app.config["UPLOAD_FOLDER"] = "uploads"
-app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 
 DATA_FILE = "pods.json"
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
+# 🔥 OCR API KEY (using demo key)
+OCR_API_KEY = "helloworld"
 
 
 # -------------------------
@@ -43,16 +47,54 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def clean_name(name):
+    words = name.split()
+    return " ".join(words[:3]).upper()
+
+
 # -------------------------
-# TEMP DATA (NO OCR FOR DEPLOY)
+# 🔥 OCR FUNCTION (REAL)
 # -------------------------
 def extract_results(image_path):
-    # TEMP HARD-CODED DATA (so deployment works perfectly)
-    return [
-        ("TOTAL INTERNATIONAL ST.", 13.82),
-        ("MONEY MARKET", 4.16),
-        ("COCA COLA CONS", 2.04),
-    ]
+
+    with open(image_path, 'rb') as f:
+        response = requests.post(
+            'https://api.ocr.space/parse/image',
+            files={'file': f},
+            data={
+                'apikey': OCR_API_KEY,
+                'language': 'eng',
+                'isOverlayRequired': False
+            }
+        )
+
+    result = response.json()
+
+    try:
+        text = result['ParsedResults'][0]['ParsedText']
+    except:
+        return []
+
+    print("\n--- OCR TEXT ---\n")
+    print(text)
+
+    lines = text.split("\n")
+    results = []
+
+    for line in lines:
+        if "%" in line:
+            percents = re.findall(r'[-+]?\d{1,3}\.\d{1,2}%', line)
+
+            if percents:
+                percent = float(percents[0].replace('%',''))
+
+                words = line.split()
+                name = clean_name(" ".join(words[:4]))
+
+                if abs(percent) > 1:
+                    results.append((name, percent))
+
+    return results
 
 
 # -------------------------
@@ -126,21 +168,15 @@ def generate_teacher_analysis(results, scoreboard):
     if avg > teacher:
         analysis.append("🔥 Strong: Beat the Teacher.")
     elif avg > market:
-        analysis.append("👍 Good: Beat the market, but not the Teacher.")
+        analysis.append("👍 Beat the market but not the Teacher.")
     else:
         analysis.append("⚠️ ETF strategy would have done better.")
 
     if best[1] > avg * 2:
-        analysis.append("⚠️ One stock is driving most of the gains.")
+        analysis.append("⚠️ One stock is driving gains.")
 
     if worst[1] < 0:
-        analysis.append("❌ A losing position is pulling results down.")
-
-    if scoreboard["win_rate"] == 100:
-        analysis.append("💪 All positions are positive.")
-
-    if len(results) < 3:
-        analysis.append("⚠️ Not diversified enough.")
+        analysis.append("❌ Losing positions hurting performance.")
 
     return analysis
 
@@ -175,7 +211,7 @@ def index():
             return render_template("index.html", pods=pods, error=error)
 
         if not allowed_file(file.filename):
-            error = "Use PNG, JPG, JPEG, or WEBP."
+            error = "Use PNG/JPG."
             return render_template("index.html", pods=pods, error=error)
 
         filename = secure_filename(file.filename)
@@ -186,12 +222,11 @@ def index():
         scoreboard = create_scoreboard(results)
 
         if not scoreboard:
-            error = "No usable data found."
+            error = "Could not read screenshot clearly."
             return render_template("index.html", pods=pods, error=error)
 
         analysis = generate_teacher_analysis(results, scoreboard)
 
-        # remove duplicate student
         pods[pod] = [p for p in pods[pod] if p["name"].lower() != name.lower()]
 
         student_record = {
@@ -221,7 +256,7 @@ def index():
 
 
 # -------------------------
-# VIEW INDIVIDUAL CHILD
+# CHILD VIEW
 # -------------------------
 @app.route("/child/<pod>/<name>")
 def view_child(pod, name):
@@ -235,7 +270,7 @@ def view_child(pod, name):
             break
 
     if not player:
-        return "Not found", 404
+        return "Not found"
 
     results = player["stocks"]
     scoreboard = create_scoreboard(results)
@@ -261,8 +296,5 @@ def reset():
     return redirect(url_for("index"))
 
 
-# -------------------------
-# RUN
-# -------------------------
 if __name__ == "__main__":
     app.run(debug=False)
