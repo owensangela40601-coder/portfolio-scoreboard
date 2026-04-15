@@ -48,7 +48,7 @@ def allowed_file(filename):
 
 
 # -------------------------
-# 🔥 OCR FUNCTION (IMPROVED)
+# 🔥 OCR FUNCTION (STABLE VERSION)
 # -------------------------
 def extract_results(image_path):
 
@@ -72,24 +72,21 @@ def extract_results(image_path):
     print("\n--- OCR TEXT ---\n")
     print(text)
 
+    # 🔥 Extract only percentages (reliable)
+    percents = re.findall(r'[-+]?\d+\.\d+%', text)
+
     results = []
-    lines = text.split("\n")
 
-    for line in lines:
-        percents = re.findall(r'[-+]?\d+\.\d+%', line)
+    for i, p in enumerate(percents):
+        value = float(p.replace('%', ''))
 
-        if percents:
-            percent = float(percents[0].replace('%', ''))
+        # ignore tiny noise values
+        if abs(value) < 0.5:
+            continue
 
-            # remove numbers and symbols to isolate name
-            name = re.sub(r'[-+]?\d+\.\d+%', '', line)
-            name = re.sub(r'[^A-Za-z ]', '', name).strip()
+        name = f"STOCK {i+1}"
 
-            # shorten name for readability
-            name = " ".join(name.split()[:3]).upper()
-
-            if name and abs(percent) > 0.5:
-                results.append((name, percent))
+        results.append((name, value))
 
     return results
 
