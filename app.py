@@ -48,7 +48,7 @@ def allowed_file(filename):
 
 
 # -------------------------
-# 🔥 OCR FUNCTION (STABLE VERSION)
+# 🔥 OCR FUNCTION (TICKER-BASED)
 # -------------------------
 def extract_results(image_path):
 
@@ -72,21 +72,30 @@ def extract_results(image_path):
     print("\n--- OCR TEXT ---\n")
     print(text)
 
-    # 🔥 Extract only percentages (reliable)
-    percents = re.findall(r'[-+]?\d+\.\d+%', text)
-
+    lines = text.split("\n")
     results = []
 
-    for i, p in enumerate(percents):
-        value = float(p.replace('%', ''))
+    for line in lines:
 
-        # ignore tiny noise values
-        if abs(value) < 0.5:
-            continue
+        # find % values
+        percents = re.findall(r'[-+]?\d+\.\d+%', line)
 
-        name = f"STOCK {i+1}"
+        # find ticker-like words (ALL CAPS)
+        tickers = re.findall(r'\b[A-Z]{2,5}\b', line)
 
-        results.append((name, value))
+        if percents and tickers:
+
+            percent = float(percents[0].replace('%',''))
+            ticker = tickers[0]
+
+            # ❌ FILTER OUT JUNK
+            if ticker in ["USD", "FDIC", "CASH", "CORE", "SWEEP"]:
+                continue
+
+            if abs(percent) < 0.5:
+                continue
+
+            results.append((ticker, percent))
 
     return results
 
