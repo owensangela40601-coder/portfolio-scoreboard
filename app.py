@@ -15,7 +15,7 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
-# 🔥 OCR API KEY (using demo key)
+# 🔥 OCR API KEY
 OCR_API_KEY = "helloworld"
 
 
@@ -47,13 +47,8 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def clean_name(name):
-    words = name.split()
-    return " ".join(words[:3]).upper()
-
-
 # -------------------------
-# 🔥 OCR FUNCTION (REAL)
+# 🔥 OCR FUNCTION (IMPROVED)
 # -------------------------
 def extract_results(image_path):
 
@@ -64,7 +59,6 @@ def extract_results(image_path):
             data={
                 'apikey': OCR_API_KEY,
                 'language': 'eng',
-                'isOverlayRequired': False
             }
         )
 
@@ -78,21 +72,24 @@ def extract_results(image_path):
     print("\n--- OCR TEXT ---\n")
     print(text)
 
-    lines = text.split("\n")
     results = []
+    lines = text.split("\n")
 
     for line in lines:
-        if "%" in line:
-            percents = re.findall(r'[-+]?\d{1,3}\.\d{1,2}%', line)
+        percents = re.findall(r'[-+]?\d+\.\d+%', line)
 
-            if percents:
-                percent = float(percents[0].replace('%',''))
+        if percents:
+            percent = float(percents[0].replace('%', ''))
 
-                words = line.split()
-                name = clean_name(" ".join(words[:4]))
+            # remove numbers and symbols to isolate name
+            name = re.sub(r'[-+]?\d+\.\d+%', '', line)
+            name = re.sub(r'[^A-Za-z ]', '', name).strip()
 
-                if abs(percent) > 1:
-                    results.append((name, percent))
+            # shorten name for readability
+            name = " ".join(name.split()[:3]).upper()
+
+            if name and abs(percent) > 0.5:
+                results.append((name, percent))
 
     return results
 
@@ -160,22 +157,18 @@ def generate_teacher_analysis(results, scoreboard):
     analysis = []
 
     avg = scoreboard["average"]
-    best = scoreboard["best"]
-    worst = scoreboard["worst"]
-    market = scoreboard["market"]
-    teacher = scoreboard["teacher"]
 
-    if avg > teacher:
+    if avg > scoreboard["teacher"]:
         analysis.append("🔥 Strong: Beat the Teacher.")
-    elif avg > market:
+    elif avg > scoreboard["market"]:
         analysis.append("👍 Beat the market but not the Teacher.")
     else:
         analysis.append("⚠️ ETF strategy would have done better.")
 
-    if best[1] > avg * 2:
+    if scoreboard["best"][1] > avg * 2:
         analysis.append("⚠️ One stock is driving gains.")
 
-    if worst[1] < 0:
+    if scoreboard["worst"][1] < 0:
         analysis.append("❌ Losing positions hurting performance.")
 
     return analysis
